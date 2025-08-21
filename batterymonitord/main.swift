@@ -1,8 +1,8 @@
 import Foundation
 import IOKit.ps
 
-func postJSON(_ json: [String: Any]) {
-    guard let url = URL(string: "http://localhost:3000/update-battery") else { return }
+func postJSON(_ json: [String: Any], _ target: String) {
+    guard let url = URL(string: target) else { return }
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -61,7 +61,11 @@ func getBatteryInfo() -> [String: Any]? {
 func powerSourceChanged(_ context: UnsafeMutableRawPointer?) {
     if let info = getBatteryInfo() {
         print("Change detected: \(info)")
-        postJSON(info)
+
+        if let target = context?.assumingMemoryBound(to: CChar.self) {
+            postJSON(info, String(cString: target))
+        }
+
     }
 }
 
@@ -69,20 +73,42 @@ let callback: IOPowerSourceCallbackType = { context in
     powerSourceChanged(context)
 }
 
-if CommandLine.arguments.last == "--get" {
+if CommandLine.arguments.last == "--get" || CommandLine.arguments.last == "-g" {
     if let info = getBatteryInfo() {
         let json = try JSONSerialization.data(withJSONObject: info)
-        print(String(data: json, encoding: .utf8) ?? "")
+        print(String(data: json, encoding: .utf8) ?? "{}")
         exit(0)
     }
     exit(1)
 }
 
-if let runLoopSource = IOPSNotificationCreateRunLoopSource(callback, nil)?.takeRetainedValue() {
-    CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .defaultMode)
-    // Send once at start
-    powerSourceChanged(nil)
-    CFRunLoopRun()
-} else {
-    print("Failed to create power source run loop source")
+let args = CommandLine.arguments
+
+if let index = (args.lastIndex(of: "-d") ?? args.lastIndex(of: "--daemonize")) {
+
+    let target = CommandLine.arguments[index + 1].utf8CString
+    let context = UnsafeMutableRawPointer.allocate(
+        byteCount: target.count, alignment: MemoryLayout<UInt8>.alignment)
+
+    defer { context.deallocate() }
+
+    target.withUnsafeBytes { (buffer: UnsafeRawBufferPointer) in
+        context.copyMemory(from: buffer.baseAddress!, byteCount: target.count)
+    }
+    if let runLoopSource = IOPSNotificationCreateRunLoopSource(callback, context)?
+        .takeRetainedValue()
+    {
+        CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .defaultMode)
+        // Send once at start
+        powerSourceChanged(nil)
+        CFRunLoopRun()
+    } else {
+        print("Failed to create power source run loop source")
+    }
 }
+
+print("No valid option provided")
+print("Options:")
+print("--get, -g             - Print current battery information as json and exit")
+print(
+    "--daemonize, -d [url] - Daemonize, battery status changes will be posted to the provided url")
