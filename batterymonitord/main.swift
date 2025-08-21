@@ -99,8 +99,7 @@ if let index = (args.lastIndex(of: "-d") ?? args.lastIndex(of: "--daemonize")) {
         .takeRetainedValue()
     {
         CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .defaultMode)
-        // Send once at start
-        powerSourceChanged(nil)
+        powerSourceChanged(context)
         CFRunLoopRun()
     } else {
         print("Failed to create power source run loop source")
