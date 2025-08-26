@@ -106,8 +106,10 @@ if let index = (args.lastIndex(of: "-d") ?? args.lastIndex(of: "--daemonize")) {
     }
 }
 
-print("No valid option provided")
-print("Options:")
-print("--get, -g             - Print current battery information as json and exit")
 print(
-    "--daemonize, -d [url] - Daemonize, battery status changes will be posted to the provided url")
+    """
+    No valid option provided
+    Options:
+        --get, -g             - Print current battery information as json and exit
+        --daemonize, -d [url] - Daemonize, battery status changes will be posted to the provided url
+    """)
