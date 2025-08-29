@@ -123,43 +123,50 @@ class BatteryMonitorWebSocketManager {
     }
 
     func getBatteryInfo() -> [String: Any]? {
-        guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
-            let sources: NSArray = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue()
-        else {
+        guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue() else {
+            print("couldn't get power sources info")
             return nil
         }
 
-        for ps in sources {
+        guard let sources: NSArray = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() else {
+            print("couldn't copy power sources")
+            return nil
+        }
+
+        for source in sources {
             guard
-                let info = IOPSGetPowerSourceDescription(snapshot, ps as CFTypeRef)?
+                let info = IOPSGetPowerSourceDescription(snapshot, source as CFTypeRef)?
                     .takeUnretainedValue() as? [String: Any]
             else {
                 continue
             }
 
-            if let current = info[kIOPSCurrentCapacityKey] as? Int,
+            guard
+                let current = info[kIOPSCurrentCapacityKey] as? Int,
                 let max = info[kIOPSMaxCapacityKey] as? Int,
                 let state = info[kIOPSPowerSourceStateKey] as? String,
                 let isChargingStatus = info[kIOPSIsChargingKey] as? Bool
-            {
-
-                let percent = Int(Double(current) / Double(max) * 100.0)
-
-                var powerSource = "Unknown"
-                if state == kIOPSACPowerValue {
-                    powerSource = "AC"
-                } else if state == kIOPSBatteryPowerValue {
-                    powerSource = "Battery"
-                } else if state == kIOPSOffLineValue {
-                    powerSource = "Offline"
-                }
-
-                return [
-                    "percentage": percent,
-                    "source": powerSource,
-                    "charging": isChargingStatus,
-                ]
+            else {
+                continue
             }
+
+            let percent = Int(Double(current) / Double(max) * 100.0)
+
+            var powerSource = "Unknown"
+            if state == kIOPSACPowerValue {
+                powerSource = "AC"
+            } else if state == kIOPSBatteryPowerValue {
+                powerSource = "Battery"
+            } else if state == kIOPSOffLineValue {
+                powerSource = "Offline"
+            }
+
+            return [
+                "percentage": percent,
+                "source": powerSource,
+                "charging": isChargingStatus,
+            ]
+
         }
         return nil
     }
