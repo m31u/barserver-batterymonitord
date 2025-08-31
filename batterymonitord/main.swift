@@ -1,14 +1,15 @@
 import Foundation
 import IOKit.ps
 
-class WebSocketDaemonClient {
+class WebSocketDaemonClient: NSObject, URLSessionWebSocketDelegate {
     private var url: String
     private var ws: URLSessionWebSocketTask?
-    private var onRequestData: () -> Void
+    private var currentState: () -> Void
 
-    init(_ url: String, _ handler: @escaping () -> Void) {
-        onRequestData = handler
-        self.url = url
+    init(_ serverUrl: String, _ handler: @escaping () -> Void) {
+        currentState = handler
+        url = serverUrl
+        super.init()
         connect(withURL: self.url)
     }
 
@@ -18,43 +19,20 @@ class WebSocketDaemonClient {
             return
         }
 
-        ws = URLSession(configuration: .default).webSocketTask(with: url)
+        ws = URLSession(configuration: .default, delegate: self, delegateQueue: .main)
+            .webSocketTask(with: url)
 
         if let ws = ws {
             ws.resume()
-            register()
         }
     }
 
-    func register() {
-        guard let ws = ws else {
-            print("couldn't register, Websocket task not initialized")
-            return
-        }
-
-        let data: [String: Any] = [
-            "type": "daemon",
-            "name": "BATTERY_DAEMON",
-        ]
-
-        guard let json = try? JSONSerialization.data(withJSONObject: data) else {
-            print("failed to create registration payload")
-            return
-        }
-
-        guard let payload = String(data: json, encoding: .utf8) else {
-            print("failed to create registration payload")
-            return
-        }
-
-        ws.send(URLSessionWebSocketTask.Message.string(payload)) { [self] error in
-            if let error = error {
-                print("error sending registration message \(error)")
-                return
-            }
-            onRequestData()
-            receive()
-        }
+    func urlSession(
+        _ session: URLSession, webSocketTask: URLSessionWebSocketTask,
+        didOpenWithProtocol protocol: String?
+    ) {
+        currentState()
+        receive()
     }
 
     func send(data: [String: Any]) {
@@ -89,7 +67,7 @@ class WebSocketDaemonClient {
         ws.receive { [self] result in
             switch result {
             case .success:
-                onRequestData()
+                currentState()
                 receive()
                 break
             case .failure:
@@ -121,7 +99,8 @@ class BatteryMonitorWebSocketManager {
                 return
             }
 
-            ws = WebSocketDaemonClient("ws://localhost:3000/listen") { [self] in
+            ws = WebSocketDaemonClient("ws://localhost:3000/daemon?name=batterymonitord") {
+                [self] in
                 sendBatteryInfo()
             }
         }
