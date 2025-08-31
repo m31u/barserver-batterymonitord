@@ -105,9 +105,28 @@ class BatteryMonitorWebSocketManager {
     private var ws: WebSocketDaemonClient?
 
     init() {
-        ws = WebSocketDaemonClient("ws://localhost:3000/listen") { [self] in
-            sendBatteryInfo()
+        DispatchQueue.main.async(execute: waitForHeartbeat)
+    }
+
+    func waitForHeartbeat() {
+        guard let url = URL(string: "http://localhost:3000/heartbeat") else {
+            return
         }
+        let req = URLRequest(url: url)
+
+        let task = URLSession.shared.dataTask(with: req) { [self] _, _, err in
+            if err != nil {
+                DispatchQueue.main.asyncAfter(
+                    deadline: .now() + 5.0, execute: waitForHeartbeat)
+                return
+            }
+
+            ws = WebSocketDaemonClient("ws://localhost:3000/listen") { [self] in
+                sendBatteryInfo()
+            }
+        }
+
+        task.resume()
     }
 
     func sendBatteryInfo() {
